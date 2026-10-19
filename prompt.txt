@@ -1,0 +1,7 @@
+Please separate the english and Hindi text—it was the trigger sentence for changing याँ to यां and एँ to यें—these letters usually come at the end of the words and also give the text exact as it is. Don't weirdly format it like putting bullets and stuff. Also change the this word बिन्दुओं to बिंदुओं. ऑडियो to ओडियो. यूहन्ना 6:28-40 to यूहन्ना अध्याय 6, वचन 28 से 40, एलिय्याह to एलिया, यशायाह to यशाया, साँप to सांप , दानिय्येल  to  दानिएल , बैतनिय्याह to बैतनिया , सिय्योन to सियोन, दुःख to दुख, can you also dived the paragraphs into 2-3 lines but do not change the meaning also do where its possible mostly on full stop
+
+Also change every remaining chandrabindu: ँ to ं
+
+Pauses (number = seconds; written as <break time="1s" /> tags for ElevenLabs / Cartesia):
+pause 5 seconds after: इस ओडियो को यहां रोकें।
+pause 5 seconds before: अभिनय को जारी रखें।

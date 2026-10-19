@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="hi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hindi Text for ElevenLabs</title>
+<style>
+ body{font-family:system-ui,"Noto Sans Devanagari",sans-serif;margin:0;background:#f4f5f7;color:#222}
+ header{background:#2d3a8c;color:#fff;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+ header h1{font-size:20px;margin:0}
+ header button{background:#fff2;color:#fff;border:1px solid #fff6}
+ main{max-width:1000px;margin:24px auto;padding:0 16px}
+ #drop{border:3px dashed #8a94c9;border-radius:12px;background:#fff;padding:40px;text-align:center;
+       font-size:18px;color:#555;cursor:pointer;transition:.15s}
+ #drop.over{background:#e8ebff;border-color:#2d3a8c}
+ .note{color:#666;font-size:13px;margin-top:8px;text-align:center}
+ .card{background:#fff;border-radius:10px;box-shadow:0 1px 4px #0002;margin:18px 0;padding:14px 16px}
+ .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+ .name{font-weight:600;flex:1;word-break:break-all}
+ .meta{color:#777;font-size:13px}
+ textarea{width:100%;box-sizing:border-box;height:220px;margin-top:10px;font-size:16px;line-height:1.6;
+          font-family:"Noto Sans Devanagari",system-ui,sans-serif;border:1px solid #ddd;border-radius:6px;padding:8px}
+ button{font-size:15px;padding:8px 18px;border-radius:6px;border:0;cursor:pointer}
+ .copy{background:#2d3a8c;color:#fff}
+ .copy.done{background:#1f8a4c}
+ .remove{background:#eee;color:#444}
+ .err{color:#b00020}
+ footer{color:#777;font-size:13px;margin:30px 0}
+ details pre{white-space:pre-wrap;font-size:13px}
+</style></head><body>
+<header><h1>Hindi text for ElevenLabs</h1><button onclick="clearAll()">Clear all</button></header>
+<main>
+ <div id="drop">Drop Word (.docx) files here<br><small>or click to choose</small>
+  <input id="pick" type="file" accept=".docx" multiple hidden></div>
+ <div class="note">Files are converted inside your browser and never uploaded. Results stay on this computer until you press Clear.</div>
+ <div id="cards"></div>
+ <footer><details><summary id="rulesum">Loading rules…</summary><pre id="rules"></pre></details></footer>
+</main>
+<script src="cleaner.js"></script>
+<script>
+const KEY = "hindiCleaner.results.v1";
+const drop = document.getElementById("drop"), pick = document.getElementById("pick"), cards = document.getElementById("cards");
+let rules = null, results = [];
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(results)); } catch (e) {} };
+
+function render() {
+  cards.innerHTML = "";
+  results.forEach((r, i) => {
+    const card = document.createElement("div"); card.className = "card";
+    if (r.error) {
+      card.innerHTML = `<div class="top"><span class="name">${esc(r.name)}</span><span class="err">${esc(r.error)}</span>
+        <button class="remove">Remove</button></div>`;
+    } else {
+      card.innerHTML = `<div class="top"><span class="name">${esc(r.name)}</span>
+        <span class="meta">${r.blocks} blocks · ${r.text.length} characters</span>
+        <button class="copy">Copy</button><button class="remove">Remove</button></div><textarea readonly></textarea>`;
+      const ta = card.querySelector("textarea"); ta.value = r.text;
+      const b = card.querySelector(".copy");
+      b.onclick = async () => {
+        try { await navigator.clipboard.writeText(ta.value); } catch (e) { ta.select(); document.execCommand("copy"); }
+        b.textContent = "Copied ✓"; b.classList.add("done");
+        setTimeout(() => { b.textContent = "Copy"; b.classList.remove("done"); }, 1500);
+      };
+    }
+    card.querySelector(".remove").onclick = () => { results.splice(i, 1); save(); render(); };
+    cards.appendChild(card);
+  });
+}
+
+function clearAll() {
+  if (results.length && !confirm("Remove all converted files from this page?")) return;
+  results = []; localStorage.removeItem(KEY); render();
+}
+
+async function handle(files) {
+  if (!rules) { alert("Rules are still loading, try again in a second."); return; }
+  const list = [...files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  for (const f of list) {
+    let r;
+    try {
+      if (!/\.docx$/i.test(f.name)) throw new Error("Not a .docx file");
+      const lines = await HindiCleaner.processDocx(await f.arrayBuffer(), rules);
+      r = { name: f.name, text: lines.join("\n"), blocks: lines.filter((l) => l).length };
+    } catch (e) {
+      r = { name: f.name, error: "Could not read this file: " + e.message };
+    }
+    const at = results.findIndex((x) => x.name === f.name);   // same file again replaces the old result
+    if (at >= 0) results[at] = r; else results.push(r);
+    save(); render();
+  }
+}
+
+drop.onclick = () => pick.click();
+pick.onchange = () => { handle(pick.files); pick.value = ""; };
+["dragenter", "dragover"].forEach((e) => drop.addEventListener(e, (ev) => { ev.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((e) => drop.addEventListener(e, (ev) => { ev.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (ev) => handle(ev.dataTransfer.files));
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => { e.preventDefault(); if (e.target !== drop) handle(e.dataTransfer.files); });
+
+try { results = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { results = []; }
+render();
+
+fetch("prompt.txt", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); }).then((t) => {
+  rules = HindiCleaner.Rules.fromText(t);
+  document.getElementById("rulesum").textContent =
+    `Rules from prompt.txt: ${rules.swaps.length} word changes${rules.verseRange ? " + scripture references" : ""}` +
+    `${rules.pauses.length ? ` + ${rules.pauses.length} pauses` : ""} (click to see)`;
+  document.getElementById("rules").textContent = rules.describe();
+}).catch((e) => { document.getElementById("rulesum").textContent = "Could not load prompt.txt (" + e.message + ")"; });
+</script>
+</body></html>
