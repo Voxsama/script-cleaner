@@ -207,20 +207,61 @@
     return blocks;
   }
 
-  async function processDocx(buf, rules) {
+  function linesFromParagraphs(paragraphs, rules) {
     const lines = [];
-    for (const block of await readDocxBlocks(buf)) {
-      for (const para of hindiParagraphs(block)) {
-        const sentences = splitSentences(rules.apply(para)).map((s) => rules.addPauses(s));
-        if (!sentences.length) continue;
-        for (const group of groupSentences(sentences)) {
-          if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
-          lines.push(group.join(" "));
-        }
+    for (const para of paragraphs) {
+      const sentences = splitSentences(rules.apply(para)).map((s) => rules.addPauses(s));
+      if (!sentences.length) continue;
+      for (const group of groupSentences(sentences)) {
+        if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
+        lines.push(group.join(" "));
       }
     }
     return lines;
   }
 
-  root.HindiCleaner = { Rules, processDocx };
+  async function processDocx(buf, rules) {
+    const paras = [];
+    for (const block of await readDocxBlocks(buf)) paras.push(...hindiParagraphs(block));
+    return linesFromParagraphs(paras, rules);
+  }
+
+  // ---------------- XLIFF ----------------
+  // Hindi paragraphs = the <target> of every translation unit, in order.
+  // Works for XLIFF 1.2 (trans-unit) and 2.x (unit/segment). Units without a
+  // Hindi target are skipped, never replaced by the English source.
+  function readXliffParagraphs(xml) {
+    const decode = (s) => s.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-f]+);/gi, (_, e) =>
+      ({ lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" }[e.toLowerCase()] ??
+        String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10))));
+    const textOf = (inner) => inner
+      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_, c) => c.replace(/&/g, "&amp;").replace(/</g, "&lt;"))
+      .replace(/<[^>]*>/g, "");
+    xml = xml.replace(/<!--[\s\S]*?-->/g, "");
+    const paras = [];
+    const unitRe = /<(?:[\w-]+:)?(trans-unit|unit)\b[^>]*?(?:\/>|>([\s\S]*?)<\/(?:[\w-]+:)?\1>)/g;
+    for (const u of xml.matchAll(unitRe)) {
+      const body = u[2] || "";
+      const targets = [...body.matchAll(/<(?:[\w-]+:)?target\b[^>]*?(?:\/>|>([\s\S]*?)<\/(?:[\w-]+:)?target>)/g)]
+        .map((t) => decode(textOf(t[1] || "")));
+      const text = targets.join(" ").trim();
+      if (text && isHindi(text)) paras.push(text);
+    }
+    return paras;
+  }
+
+  async function processXliff(buf, rules) {
+    const xml = new TextDecoder("utf-8").decode(buf);
+    return linesFromParagraphs(readXliffParagraphs(xml), rules);
+  }
+
+  const SUPPORTED = { docx: processDocx, xliff: processXliff, xlf: processXliff };
+
+  async function processFile(buf, name, rules) {
+    const ext = (name.match(/\.([^.]+)$/) || [, ""])[1].toLowerCase();
+    if (!SUPPORTED[ext]) throw new Error("Not a .docx, .xliff or .xlf file");
+    return SUPPORTED[ext](buf, rules);
+  }
+
+  root.HindiCleaner = { Rules, processDocx, processXliff, processFile, readXliffParagraphs };
 })(typeof window !== "undefined" ? window : globalThis);

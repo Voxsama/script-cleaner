@@ -1,6 +1,6 @@
 # Hindi text for ElevenLabs
 
-Drop English/Hindi Word (.docx) files on the page and get the cleaned Hindi text,
+Drop English/Hindi Word (.docx) or XLIFF (.xliff / .xlf) files on the page and get the cleaned Hindi text,
 split into 2-3 sentence blocks with pause tags, ready to copy into ElevenLabs or Cartesia.
 
 Everything runs in the browser. Files are never uploaded. Results are remembered on

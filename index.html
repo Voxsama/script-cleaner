@@ -28,8 +28,8 @@
 </style></head><body>
 <header><h1>Hindi text for ElevenLabs</h1><button onclick="clearAll()">Clear all</button></header>
 <main>
- <div id="drop">Drop Word (.docx) files here<br><small>or click to choose</small>
-  <input id="pick" type="file" accept=".docx" multiple hidden></div>
+ <div id="drop">Drop Word (.docx) or XLIFF (.xliff) files here<br><small>or click to choose</small>
+  <input id="pick" type="file" accept=".docx,.xliff,.xlf" multiple hidden></div>
  <div class="note">Files are converted inside your browser and never uploaded. Results stay on this computer until you press Clear.</div>
  <div id="cards"></div>
  <footer><details><summary id="rulesum">Loading rules…</summary><pre id="rules"></pre></details></footer>
@@ -78,8 +78,7 @@ async function handle(files) {
   for (const f of list) {
     let r;
     try {
-      if (!/\.docx$/i.test(f.name)) throw new Error("Not a .docx file");
-      const lines = await HindiCleaner.processDocx(await f.arrayBuffer(), rules);
+      const lines = await HindiCleaner.processFile(await f.arrayBuffer(), f.name, rules);
       r = { name: f.name, text: lines.join("\n"), blocks: lines.filter((l) => l).length };
     } catch (e) {
       r = { name: f.name, error: "Could not read this file: " + e.message };
