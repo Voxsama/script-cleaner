@@ -224,12 +224,18 @@
     return null;
   }
 
+  function withHeader(ref, body) {
+    if (!(ADD_REFERENCE_HEADER && ref)) return [...body];
+    return body.length ? [ref, "", ...body] : [ref];
+  }
+
   function linesFromParagraphs(paragraphs, rules) {
+    return withHeader(findReference(paragraphs, rules), bodyLines(paragraphs, rules));
+  }
+
+  // The cleaned text of a file, without the reference header.
+  function bodyLines(paragraphs, rules) {
     const lines = [];
-    if (ADD_REFERENCE_HEADER) {
-      const ref = findReference(paragraphs, rules);
-      if (ref) lines.push(ref);
-    }
     for (const para of paragraphs) {
       const sentences = splitSentences(rules.apply(para)).map((s) => rules.addPauses(s));
       if (!sentences.length) continue;
@@ -239,12 +245,6 @@
       }
     }
     return lines;
-  }
-
-  async function processDocx(buf, rules) {
-    const paras = [];
-    for (const block of await readDocxBlocks(buf)) paras.push(...hindiParagraphs(block));
-    return linesFromParagraphs(paras, rules);
   }
 
   // ---------------- XLIFF ----------------
@@ -271,18 +271,54 @@
     return paras;
   }
 
-  async function processXliff(buf, rules) {
-    const xml = new TextDecoder("utf-8").decode(buf);
-    return linesFromParagraphs(readXliffParagraphs(xml), rules);
-  }
-
-  const SUPPORTED = { docx: processDocx, xliff: processXliff, xlf: processXliff };
-
-  async function processFile(buf, name, rules) {
+  // Hindi paragraphs of a .docx or .xliff file.
+  async function readParagraphs(buf, name) {
     const ext = (name.match(/\.([^.]+)$/) || [, ""])[1].toLowerCase();
-    if (!SUPPORTED[ext]) throw new Error("Not a .docx, .xliff or .xlf file");
-    return SUPPORTED[ext](buf, rules);
+    if (ext === "docx") {
+      const paras = [];
+      for (const block of await readDocxBlocks(buf)) paras.push(...hindiParagraphs(block));
+      return paras;
+    }
+    if (ext === "xliff" || ext === "xlf") return readXliffParagraphs(new TextDecoder("utf-8").decode(buf));
+    throw new Error("Not a .docx, .xliff or .xlf file");
   }
 
-  root.HindiCleaner = { Rules, processDocx, processXliff, processFile, readXliffParagraphs, findReference };
+  // Convert one file on its own (no borrowing from other files).
+  async function processFile(buf, name, rules) {
+    return linesFromParagraphs(await readParagraphs(buf, name), rules);
+  }
+
+  // {ref: own reference or null, body: lines} for one file.
+  async function fileParts(buf, name, rules) {
+    const paras = await readParagraphs(buf, name);
+    return { ref: findReference(paras, rules), body: bodyLines(paras, rules) };
+  }
+
+  // ---------------- Borrowing a missing reference ----------------
+  // Files of the same passage share a name apart from the section part:
+  // exo-p76-s2-v1... and exo-p76-s3-v1... -> "exo-p76-v1". null if no "-s<number>".
+  function passageKey(name) {
+    const stem = name.replace(/^.*[\\/]/, "").split(".")[0];
+    const re = /-s\d+(?=-|$)/i;
+    return re.test(stem) ? stem.replace(re, "").toLowerCase() : null;
+  }
+
+  // items: [{name, ref}] -> adds header and headerFrom (null = own reference,
+  // a file name = copied from that file). Copies only from the same passage;
+  // for names without a section part, only when all references agree.
+  function fillReferences(items) {
+    const own = items.filter((it) => it.ref).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const it of items) {
+      it.header = it.ref || null; it.headerFrom = null;
+      if (it.header) continue;
+      const key = passageKey(it.name);
+      const donor = key ? own.find((d) => passageKey(d.name) === key)
+        : own.length && new Set(own.map((d) => d.ref)).size === 1 ? own[0] : null;
+      if (donor) { it.header = donor.ref; it.headerFrom = donor.name; }
+    }
+    return items;
+  }
+
+  root.HindiCleaner = { Rules, processFile, fileParts, withHeader, passageKey, fillReferences,
+    readXliffParagraphs, findReference, ADD_REFERENCE_HEADER };
 })(typeof window !== "undefined" ? window : globalThis);

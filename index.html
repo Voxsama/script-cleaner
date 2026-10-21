@@ -23,6 +23,8 @@
  .copy.done{background:#1f8a4c}
  .remove{background:#eee;color:#444}
  .err{color:#b00020}
+ .info{color:#555;font-size:13px;margin-top:6px}
+ .warn{color:#a15c00;font-size:13px;margin-top:6px}
  footer{color:#777;font-size:13px;margin:30px 0}
  details pre{white-space:pre-wrap;font-size:13px}
 </style></head><body>
@@ -36,14 +38,25 @@
 </main>
 <script src="cleaner.js"></script>
 <script>
-const KEY = "hindiCleaner.results.v1";
+const KEY = "hindiCleaner.results.v2";
 const drop = document.getElementById("drop"), pick = document.getElementById("pick"), cards = document.getElementById("cards");
 let rules = null, results = [];
 
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(results)); } catch (e) {} };
+const save = () => { try {
+  localStorage.setItem(KEY, JSON.stringify(results.map(({ name, ref, body, error }) => ({ name, ref, body, error }))));
+} catch (e) {} };
+
+// Final text of a result: reference header (own or copied from a file of the
+// same passage) + body. Recomputed for all cards whenever files change.
+function finalTexts() {
+  const ok = results.filter((r) => !r.error);
+  HindiCleaner.fillReferences(ok);
+  for (const r of ok) r.text = HindiCleaner.withHeader(r.header, r.body).join("\n");
+}
 
 function render() {
+  finalTexts();
   cards.innerHTML = "";
   results.forEach((r, i) => {
     const card = document.createElement("div"); card.className = "card";
@@ -52,8 +65,11 @@ function render() {
         <button class="remove">Remove</button></div>`;
     } else {
       card.innerHTML = `<div class="top"><span class="name">${esc(r.name)}</span>
-        <span class="meta">${r.blocks} blocks · ${r.text.length} characters</span>
-        <button class="copy">Copy</button><button class="remove">Remove</button></div><textarea readonly></textarea>`;
+        <span class="meta">${r.body.filter((l) => l).length} blocks · ${r.text.length} characters</span>
+        <button class="copy">Copy</button><button class="remove">Remove</button></div>
+        ${!HindiCleaner.ADD_REFERENCE_HEADER ? "" : r.headerFrom ? `<div class="info">Reference copied from ${esc(r.headerFrom)}</div>`
+          : !r.header ? `<div class="warn">No passage reference found in this file or in other files of the same passage. Drop another section of this passage to add it.</div>` : ""}
+        <textarea readonly></textarea>`;
       const ta = card.querySelector("textarea"); ta.value = r.text;
       const b = card.querySelector(".copy");
       b.onclick = async () => {
@@ -78,15 +94,15 @@ async function handle(files) {
   for (const f of list) {
     let r;
     try {
-      const lines = await HindiCleaner.processFile(await f.arrayBuffer(), f.name, rules);
-      r = { name: f.name, text: lines.join("\n"), blocks: lines.filter((l) => l).length };
+      const parts = await HindiCleaner.fileParts(await f.arrayBuffer(), f.name, rules);
+      r = { name: f.name, ref: parts.ref, body: parts.body };
     } catch (e) {
       r = { name: f.name, error: "Could not read this file: " + e.message };
     }
     const at = results.findIndex((x) => x.name === f.name);   // same file again replaces the old result
     if (at >= 0) results[at] = r; else results.push(r);
-    save(); render();
   }
+  save(); render();
 }
 
 drop.onclick = () => pick.click();
@@ -98,6 +114,8 @@ document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => { e.preventDefault(); if (e.target !== drop) handle(e.dataTransfer.files); });
 
 try { results = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { results = []; }
+localStorage.removeItem("hindiCleaner.results.v1");   // older format, replaced by v2
+results = results.filter((r) => r.error || Array.isArray(r.body));
 render();
 
 fetch("prompt.txt", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); }).then((t) => {
