@@ -5,6 +5,8 @@
 
   const SENTENCES_PER_BLOCK = 2;
   const BLANK_LINE_BETWEEN_PARAGRAPHS = true;
+  // Start every output with the file's passage reference on its own line.
+  const ADD_REFERENCE_HEADER = true;
   const BREAK_TAG = '<break time="1s" />';
 
   const DEV_WORD = "[\\u0900-\\u097F]+";
@@ -207,8 +209,27 @@
     return blocks;
   }
 
+  // Book names of more than one word; a leading 1/2/3 (1 शमूएल) is handled too.
+  const MULTI_WORD_BOOKS = ["भजन संहिता", "प्रेरितों के काम", "श्रेष्ठ गीत"];
+  const reEscape = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const REFERENCE_RE = new RegExp(
+    "(?:[123]\\s+)?(?:" + MULTI_WORD_BOOKS.map(reEscape).join("|") + `|${DEV_WORD})` +
+    "\\s+\\d+\\s*:\\s*\\d+(?:\\s*[-–—]\\s*\\d+)?", "u");
+
+  function findReference(paragraphs, rules) {
+    for (const para of paragraphs) {
+      const m = REFERENCE_RE.exec(para);
+      if (m) return rules.apply(m[0]).trim();
+    }
+    return null;
+  }
+
   function linesFromParagraphs(paragraphs, rules) {
     const lines = [];
+    if (ADD_REFERENCE_HEADER) {
+      const ref = findReference(paragraphs, rules);
+      if (ref) lines.push(ref);
+    }
     for (const para of paragraphs) {
       const sentences = splitSentences(rules.apply(para)).map((s) => rules.addPauses(s));
       if (!sentences.length) continue;
@@ -263,5 +284,5 @@
     return SUPPORTED[ext](buf, rules);
   }
 
-  root.HindiCleaner = { Rules, processDocx, processXliff, processFile, readXliffParagraphs };
+  root.HindiCleaner = { Rules, processDocx, processXliff, processFile, readXliffParagraphs, findReference };
 })(typeof window !== "undefined" ? window : globalThis);
