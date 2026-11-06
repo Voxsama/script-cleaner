@@ -192,11 +192,37 @@
     return runs.filter(([l]) => l === "hi").map(([, p]) => joinPieces(p));
   }
 
+  // Quote marks: [opening, closing]. A straight " opens and closes, the curly
+  // pair \u201c/\u201d and the single curly \u2018/\u2019 match each other.
+  const QUOTE_PAIRS = [['"', '"'], ["\u201c", "\u201d"], ["\u2018", "\u2019"], ["`", "`"]];
+  const SENTENCE_CHARS = "\u0964\u0965.?!\uff01\uff1f";
+
+  // Split into sentences. A sentence end inside an open quotation is not a
+  // break, so quoted speech stays in one piece and the text after it flows.
   function splitSentences(text) {
     const out = [];
     for (let chunk of text.split("\n")) {
       chunk = chunk.replace(/\s+/gu, " ").trim();
-      for (const s of chunk.split(/(?<=[।॥.?!])\s+/u)) if (s.trim()) out.push(s.trim());
+      if (!chunk) continue;
+      let start = 0, closer = null, i = 0;
+      while (i < chunk.length) {
+        const ch = chunk[i];
+        if (closer === null) {
+          for (const [o, c] of QUOTE_PAIRS) if (ch === o) { closer = c; break; }
+        } else if (ch === closer) {
+          closer = null;
+        }
+        if (closer === null && SENTENCE_CHARS.includes(ch) && chunk[i + 1] === " ") {
+          let j = i + 1;
+          while (j < chunk.length && chunk[j] === " ") j++;
+          const piece = chunk.slice(start, j).trim();
+          if (piece) out.push(piece);
+          start = j; i = j; continue;
+        }
+        i++;
+      }
+      const piece = chunk.slice(start).trim();
+      if (piece) out.push(piece);
     }
     return out;
   }
