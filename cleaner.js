@@ -192,6 +192,50 @@
     return runs.filter(([l]) => l === "hi").map(([, p]) => joinPieces(p));
   }
 
+  function quoteSpans(text) {
+    const spans = [];
+    let opening = null, start = null;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (opening === null) {
+        if (["\"", "“", "‘", "`"].includes(ch)) { opening = ch; start = i; }
+      } else if ((opening === "\"" && ["\"", "”"].includes(ch)) ||
+                 (opening === "“" && ["”", "\""].includes(ch)) ||
+                 (opening === "‘" && ["’", "'"].includes(ch)) ||
+                 (opening === "`" && ch === "`")) {
+        spans.push([start, i + 1]); opening = null; start = null;
+      }
+    }
+    return spans;
+  }
+
+  function splitQuoteExamples(text) {
+    const spans = quoteSpans(text);
+    if (spans.length < 2) return [text];
+    const chains = [];
+    let chainStart = null, chainEnd = null;
+    for (let i = 1; i < spans.length; i++) {
+      const between = text.slice(spans[i - 1][1], spans[i][0]);
+      if (/^\s*या(?:\s+[\u0900-\u097f]+){0,3}\s*$/u.test(between)) {
+        if (chainStart === null) chainStart = i - 1;
+        chainEnd = i;
+      } else if (chainStart !== null) {
+        chains.push([chainStart, chainEnd]); chainStart = chainEnd = null;
+      }
+    }
+    if (chainStart !== null) chains.push([chainStart, chainEnd]);
+    if (!chains.length) return [text];
+    const [first, last] = chains.reduce((best, current) =>
+      current[1] - current[0] > best[1] - best[0] ? current : best);
+    if (last - first < 1) return [text];
+    const intro = text.slice(0, spans[first][0]).trim();
+    let end = spans[last][1];
+    while (end < text.length && "।॥.,;:!?".includes(text[end])) end++;
+    const alternatives = text.slice(spans[first][0], end).trim();
+    const remainder = text.slice(end).trim();
+    return [intro, alternatives, remainder].filter(Boolean);
+  }
+
   // Quote marks: [opening, closing]. A straight " opens and closes, the curly
   // pair \u201c/\u201d and the single curly \u2018/\u2019 match each other.
   const QUOTE_PAIRS = [['"', '"'], ["\u201c", "\u201d"], ["\u2018", "\u2019"], ["`", "`"]];
@@ -263,11 +307,13 @@
   function bodyLines(paragraphs, rules) {
     const lines = [];
     for (const para of paragraphs) {
-      const sentences = splitSentences(rules.apply(para)).map((s) => rules.addPauses(s));
-      if (!sentences.length) continue;
-      for (const group of groupSentences(sentences)) {
-        if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
-        lines.push(group.join(" "));
+      for (const piece of splitQuoteExamples(rules.apply(para))) {
+        const sentences = splitSentences(piece).map((s) => rules.addPauses(s));
+        if (!sentences.length) continue;
+        for (const group of groupSentences(sentences)) {
+          if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
+          lines.push(group.join(" "));
+        }
       }
     }
     return lines;
@@ -345,6 +391,6 @@
     return items;
   }
 
-  root.HindiCleaner = { Rules, processFile, fileParts, withHeader, passageKey, fillReferences,
+  root.HindiCleaner = { Rules, processFile, fileParts, withHeader, passageKey, fillReferences, splitQuoteExamples,
     readXliffParagraphs, findReference, ADD_REFERENCE_HEADER };
 })(typeof window !== "undefined" ? window : globalThis);
