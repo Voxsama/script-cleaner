@@ -36,9 +36,9 @@
  <div id="cards"></div>
  <footer><details><summary id="rulesum">Loading rules…</summary><pre id="rules"></pre></details></footer>
 </main>
-<script src="cleaner.js"></script>
+<script src="cleaner.js?v=20261109b"></script>
 <script>
-const KEY = "hindiCleaner.results.v2";
+const KEY = "hindiCleaner.results.v3";
 const drop = document.getElementById("drop"), pick = document.getElementById("pick"), cards = document.getElementById("cards");
 let rules = null, results = [];
 
@@ -114,11 +114,12 @@ document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => { e.preventDefault(); if (e.target !== drop) handle(e.dataTransfer.files); });
 
 try { results = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { results = []; }
-localStorage.removeItem("hindiCleaner.results.v1");   // older format, replaced by v2
+localStorage.removeItem("hindiCleaner.results.v1");
+localStorage.removeItem("hindiCleaner.results.v2");
 results = results.filter((r) => r.error || Array.isArray(r.body));
 render();
 
-fetch("prompt.txt", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); }).then((t) => {
+fetch("prompt.txt?v=20261109b", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); }).then((t) => {
   rules = HindiCleaner.Rules.fromText(t);
   document.getElementById("rulesum").textContent =
     `Rules from prompt.txt: ${rules.swaps.length} word changes${rules.verseRange ? " + scripture references" : ""}` +
