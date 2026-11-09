@@ -4,4 +4,6 @@ Also change every remaining chandrabindu: ँ to ं
 
 Pauses (number = seconds; written as <break time="1s" /> tags for ElevenLabs / Cartesia):
 pause 5 seconds after: इस ओडियो को यहां रोकें।
+pause 5 seconds after: ओडियो को यहां रोकें।
 pause 5 seconds before: अभिनय को जारी रखें।
+pause 5 seconds before: अभिनय जारी रखें।
