@@ -303,10 +303,26 @@
     return withHeader(findReference(paragraphs, rules), bodyLines(paragraphs, rules));
   }
 
+  function mergeYaParagraphs(paragraphs) {
+    const merged = [];
+    for (const p of paragraphs) {
+      const pStrip = p.trim();
+      if (!pStrip) continue;
+      const endsWithYa = merged.length && /(?:[;:"”'’`\-—–]\s*)?या\s*$/u.test(merged[merged.length - 1].trim());
+      const startsWithYa = merged.length && /^(?:[;:"“'’`\-—–]\s*)?या(?:\s|$)/u.test(pStrip);
+      if (endsWithYa || startsWithYa) {
+        merged[merged.length - 1] = merged[merged.length - 1].trimEnd() + " " + pStrip.trimStart();
+      } else {
+        merged.push(pStrip);
+      }
+    }
+    return merged;
+  }
+
   // The cleaned text of a file, without the reference header.
   function bodyLines(paragraphs, rules) {
     const lines = [];
-    for (const para of paragraphs) {
+    for (const para of mergeYaParagraphs(paragraphs)) {
       for (const piece of splitQuoteExamples(rules.apply(para))) {
         const sentences = splitSentences(piece).map((s) => rules.addPauses(s));
         if (!sentences.length) continue;
