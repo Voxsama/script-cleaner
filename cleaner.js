@@ -83,10 +83,22 @@
     }
 
     addPauses(sentence) {
-      for (const [secs, where, phrase] of this.pauses) {
+      const sortedPauses = [...this.pauses].sort((a, b) => b[2].length - a[2].length);
+      const appliedAfter = new Set();
+      const appliedBefore = new Set();
+      for (const [secs, where, phrase] of sortedPauses) {
         if (sentence.includes(phrase)) {
-          const tags = Array(secs).fill(BREAK_TAG).join(" ");
-          sentence = where === "before" ? `${tags} ${sentence}` : `${sentence} ${tags}`;
+          if (where === "after") {
+            if ([...appliedAfter].some((prev) => prev.includes(phrase))) continue;
+            appliedAfter.add(phrase);
+            const tags = Array(secs).fill(BREAK_TAG).join(" ");
+            sentence = `${sentence} ${tags}`;
+          } else if (where === "before") {
+            if ([...appliedBefore].some((prev) => prev.includes(phrase))) continue;
+            appliedBefore.add(phrase);
+            const tags = Array(secs).fill(BREAK_TAG).join(" ");
+            sentence = `${tags} ${sentence}`;
+          }
         }
       }
       return sentence;
@@ -319,6 +331,10 @@
     return merged;
   }
 
+  function hasYaAlternatives(text) {
+    return /(?:[;"”'’`]\s*|^)या\s+/u.test(text) || (text.split(" या ").length > 1 && (text.includes(";") || text.includes('"') || text.includes('”')));
+  }
+
   // The cleaned text of a file, without the reference header.
   function bodyLines(paragraphs, rules) {
     const lines = [];
@@ -326,6 +342,16 @@
       for (const piece of splitQuoteExamples(rules.apply(para))) {
         const sentences = splitSentences(piece).map((s) => rules.addPauses(s));
         if (!sentences.length) continue;
+        if (hasYaAlternatives(piece)) {
+          if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
+          lines.push(sentences.join(" "));
+          continue;
+        }
+        if (SENTENCES_PER_BLOCK <= 1) {
+          if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
+          lines.push(...sentences);
+          continue;
+        }
         for (const group of groupSentences(sentences)) {
           if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
           lines.push(group.join(" "));
