@@ -7,6 +7,9 @@
   const BLANK_LINE_BETWEEN_PARAGRAPHS = true;
   // Start every output with the file's passage reference on its own line.
   const ADD_REFERENCE_HEADER = true;
+  // Longest line the app will produce, in characters. A paragraph whose two
+  // sentences would be longer than this is split into shorter lines.
+  const MAX_BLOCK_CHARS = 300;
   const BREAK_TAG = '<break time="1s" />';
 
   const DEV_WORD = "[\\u0900-\\u097F]+";
@@ -286,8 +289,19 @@
   function groupSentences(sentences, size = SENTENCES_PER_BLOCK) {
     if (size <= 1) return sentences.map((s) => [s]);
     const blocks = [];
-    for (let i = 0; i < sentences.length; i += size) blocks.push(sentences.slice(i, i + size));
-    if (blocks.length > 1 && blocks[blocks.length - 1].length < size) blocks[blocks.length - 2].push(...blocks.pop());
+    let cur = [];
+    for (const s of sentences) {
+      if (cur.length && (cur.length >= size || [...cur, s].join(" ").length > MAX_BLOCK_CHARS)) {
+        blocks.push(cur); cur = [s];
+      } else {
+        cur.push(s);
+      }
+    }
+    if (cur.length) {
+      const last = blocks[blocks.length - 1];
+      if (last && cur.length < size && [...last, ...cur].join(" ").length <= MAX_BLOCK_CHARS) last.push(...cur);
+      else blocks.push(cur);
+    }
     return blocks;
   }
 
@@ -331,8 +345,24 @@
     return merged;
   }
 
+  // An "alternative connector": या preceded by a semicolon or a closing quote,
+  // e.g. "; या" or "” या". A plain " या " between two words is ordinary prose,
+  // not a list of options.
+  const ALT_CONNECTOR = /[;"”’']\s*या(?=\s)/u;
+
   function hasYaAlternatives(text) {
-    return /(?:[;"”'’`]\s*|^)या\s+/u.test(text) || (text.split(" या ").length > 1 && (text.includes(";") || text.includes('"') || text.includes('”')));
+    return ALT_CONNECTOR.test(text);
+  }
+
+  // Split "question: option1; या option2" into the question and the list.
+  function splitIntroFromAlternatives(text) {
+    const m = ALT_CONNECTOR.exec(text);
+    if (!m) return [text];
+    const colon = text.lastIndexOf(":", m.index);
+    if (colon === -1 || /["“”‘’]/.test(text.slice(0, colon))) return [text];
+    const intro = text.slice(0, colon + 1).trim();
+    const options = text.slice(colon + 1).trim();
+    return intro && options ? [intro, options] : [text];
   }
 
   // The cleaned text of a file, without the reference header.
@@ -340,21 +370,23 @@
     const lines = [];
     for (const para of mergeYaParagraphs(paragraphs)) {
       for (const piece of splitQuoteExamples(rules.apply(para))) {
-        const sentences = splitSentences(piece).map((s) => rules.addPauses(s));
-        if (!sentences.length) continue;
-        if (hasYaAlternatives(piece)) {
-          if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
-          lines.push(sentences.join(" "));
-          continue;
-        }
-        if (SENTENCES_PER_BLOCK <= 1) {
-          if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
-          lines.push(...sentences);
-          continue;
-        }
-        for (const group of groupSentences(sentences)) {
-          if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
-          lines.push(group.join(" "));
+        for (const part of splitIntroFromAlternatives(piece)) {
+          const sentences = splitSentences(part).map((s) => rules.addPauses(s));
+          if (!sentences.length) continue;
+          if (hasYaAlternatives(part)) {
+            if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
+            lines.push(sentences.join(" "));
+            continue;
+          }
+          if (SENTENCES_PER_BLOCK <= 1) {
+            if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
+            lines.push(...sentences);
+            continue;
+          }
+          for (const group of groupSentences(sentences)) {
+            if (lines.length && BLANK_LINE_BETWEEN_PARAGRAPHS) lines.push("");
+            lines.push(group.join(" "));
+          }
         }
       }
     }
